@@ -1,0 +1,9 @@
+azs             = ["us-east-1a", "us-east-1b"]
+app_name        = "terraformtask2"
+private_subnets = ["10.10.1.0/24", "10.10.2.0/24"]
+public_subnets  = ["10.10.101.0/24", "10.10.102.0/24"]
+vpc_cidr_block  = "10.10.0.0/16"
+environment     = "dev"
+managed_by      = "Andrii"
+allowed_cidr    = "85.223.209.18/32"
+key_name        = "openvpn"
