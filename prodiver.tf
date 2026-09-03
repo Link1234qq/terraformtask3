@@ -6,14 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = ">= 6.37.0, < 7.0.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = ">= 3.6.0"
-    }
   }
 }
 
 provider "aws" {
-  region  = "us-east-1"
+  region  = var.aws_region
   profile = "default"
 }

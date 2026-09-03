@@ -1,117 +1,22 @@
 locals {
-  permissions_boundary_arn = "arn:aws:iam::${var.account_id}:policy/eo_role_boundary"
-  name                     = "${var.name_prefix}-asg"
-}
-
-data "aws_region" "current" {}
-
-
-resource "aws_iam_role" "asg" {
-  name                 = local.name
-  path                 = "/ec2/"
-  description          = "IAM role for ${local.name}"
-  permissions_boundary = local.permissions_boundary_arn
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = "sts:AssumeRole"
-      Principal = {
-        Service = "ec2.amazonaws.com"
-      }
-    }]
-  })
-
-  tags = {
-    Name = local.name
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
-  role       = aws_iam_role.asg.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-resource "aws_iam_instance_profile" "asg" {
-  name = local.name
-  path = "/ec2/"
-  role = aws_iam_role.asg.name
-
-  tags = {
-    Name = local.name
-  }
-}
-
-resource "aws_launch_template" "this" {
-  name_prefix   = "${local.name}-"
-  description   = "Launch template for ${local.name}"
-  image_id      = data.aws_ami.this.id
-  instance_type = var.instance_type
-
-  vpc_security_group_ids = [var.asg_sg_id]
-
-  iam_instance_profile {
-    arn = aws_iam_instance_profile.asg.arn
-  }
-
-  user_data = base64encode(templatefile("${path.module}/user_data.sh.tftpl", {
-    app_name      = var.app_name
-    docker_image  = var.docker_image
-    db_url        = var.db_url
-    db_secret_arn = var.db_secret_arn
-    aws_region    = data.aws_region.current.id
-  }))
-
-  metadata_options {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 1
-  }
-
-  monitoring {
-    enabled = true
-  }
-
-  update_default_version = true
-
-  tag_specifications {
-    resource_type = "instance"
-    tags = {
-      Name = local.name
-    }
-  }
-
-  tag_specifications {
-    resource_type = "volume"
-    tags = {
-      Name = local.name
-    }
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  tags = {
-    Name = local.name
-  }
+  name = "${var.name_prefix}-asg"
 }
 
 resource "aws_autoscaling_group" "this" {
-  name                      = local.name
-  vpc_zone_identifier       = var.public_subnets
-  target_group_arns         = [var.target_group_arn]
-  health_check_type         = "ELB"
-  health_check_grace_period = 300
+  name                = local.name
+  vpc_zone_identifier = var.subnet_ids
+  target_group_arns   = var.target_group_arn != null ? [var.target_group_arn] : []
 
   min_size         = var.min_size
   max_size         = var.max_size
   desired_capacity = var.desired_capacity
 
+  health_check_type         = var.health_check_type
+  health_check_grace_period = var.health_check_grace_period
+
   launch_template {
-    id      = aws_launch_template.this.id
-    version = "$Latest"
+    id      = var.launch_template_id
+    version = var.launch_template_version
   }
 
   tag {
@@ -120,10 +25,14 @@ resource "aws_autoscaling_group" "this" {
     propagate_at_launch = false
   }
 
+  tag {
+    key                 = "Name"
+    value               = "${local.name}-instance"
+    propagate_at_launch = true
+  }
+
   dynamic "tag" {
-    for_each = {
-      Name = local.name
-    }
+    for_each = var.tags
 
     content {
       key                 = tag.key
@@ -134,5 +43,92 @@ resource "aws_autoscaling_group" "this" {
 
   lifecycle {
     create_before_destroy = true
+  }
+}
+
+resource "aws_autoscaling_policy" "scale_out" {
+  count = var.scaling_mode == "cloudwatch_alarms" ? 1 : 0
+
+  name                   = "${local.name}-scale-out"
+  autoscaling_group_name = aws_autoscaling_group.this.name
+  adjustment_type        = "ChangeInCapacity"
+  scaling_adjustment     = 1
+  cooldown               = 300
+  policy_type            = "SimpleScaling"
+}
+
+resource "aws_autoscaling_policy" "scale_in" {
+  count = var.scaling_mode == "cloudwatch_alarms" ? 1 : 0
+
+  name                   = "${local.name}-scale-in"
+  autoscaling_group_name = aws_autoscaling_group.this.name
+  adjustment_type        = "ChangeInCapacity"
+  scaling_adjustment     = -1
+  cooldown               = 300
+  policy_type            = "SimpleScaling"
+}
+
+resource "aws_cloudwatch_metric_alarm" "cpu_high" {
+  count = var.scaling_mode == "cloudwatch_alarms" ? 1 : 0
+
+  alarm_name          = "${local.name}-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 70
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Scale out when average CPU exceeds 70% for 5 minutes"
+  alarm_actions       = [aws_autoscaling_policy.scale_out[0].arn]
+
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.this.name
+  }
+
+  tags = merge(var.tags, {
+    Name = "${local.name}-cpu-high"
+  })
+}
+
+resource "aws_cloudwatch_metric_alarm" "cpu_low" {
+  count = var.scaling_mode == "cloudwatch_alarms" ? 1 : 0
+
+  alarm_name          = "${local.name}-cpu-low"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 30
+  treat_missing_data  = "notBreaching"
+  alarm_description   = "Scale in when average CPU is below 30% for 5 minutes"
+  alarm_actions       = [aws_autoscaling_policy.scale_in[0].arn]
+
+  dimensions = {
+    AutoScalingGroupName = aws_autoscaling_group.this.name
+  }
+
+  tags = merge(var.tags, {
+    Name = "${local.name}-cpu-low"
+  })
+}
+
+resource "aws_autoscaling_policy" "cpu_target_tracking" {
+  count = var.scaling_mode == "target_tracking" ? 1 : 0
+
+  name                   = "${local.name}-cpu-target"
+  autoscaling_group_name = aws_autoscaling_group.this.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+
+    target_value     = 50.0
+    disable_scale_in = false
   }
 }
