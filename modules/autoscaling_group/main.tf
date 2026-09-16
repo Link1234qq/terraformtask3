@@ -1,9 +1,5 @@
-locals {
-  name = "${var.name_prefix}-asg"
-}
-
 resource "aws_autoscaling_group" "this" {
-  name                = local.name
+  name                = var.name_prefix
   vpc_zone_identifier = var.subnet_ids
   target_group_arns   = var.target_group_arn != null ? [var.target_group_arn] : []
 
@@ -21,24 +17,14 @@ resource "aws_autoscaling_group" "this" {
 
   tag {
     key                 = "Name"
-    value               = local.name
+    value               = var.name_prefix
     propagate_at_launch = false
   }
 
   tag {
     key                 = "Name"
-    value               = "${local.name}-instance"
+    value               = var.name_prefix
     propagate_at_launch = true
-  }
-
-  dynamic "tag" {
-    for_each = var.tags
-
-    content {
-      key                 = tag.key
-      value               = tag.value
-      propagate_at_launch = true
-    }
   }
 
   lifecycle {
@@ -49,7 +35,7 @@ resource "aws_autoscaling_group" "this" {
 resource "aws_autoscaling_policy" "scale_out" {
   count = var.scaling_mode == "cloudwatch_alarms" ? 1 : 0
 
-  name                   = "${local.name}-scale-out"
+  name                   = "${var.name_prefix}-scale-out"
   autoscaling_group_name = aws_autoscaling_group.this.name
   adjustment_type        = "ChangeInCapacity"
   scaling_adjustment     = 1
@@ -60,7 +46,7 @@ resource "aws_autoscaling_policy" "scale_out" {
 resource "aws_autoscaling_policy" "scale_in" {
   count = var.scaling_mode == "cloudwatch_alarms" ? 1 : 0
 
-  name                   = "${local.name}-scale-in"
+  name                   = "${var.name_prefix}-scale-in"
   autoscaling_group_name = aws_autoscaling_group.this.name
   adjustment_type        = "ChangeInCapacity"
   scaling_adjustment     = -1
@@ -71,7 +57,7 @@ resource "aws_autoscaling_policy" "scale_in" {
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   count = var.scaling_mode == "cloudwatch_alarms" ? 1 : 0
 
-  alarm_name          = "${local.name}-cpu-high"
+  alarm_name          = "${var.name_prefix}-cpu-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "CPUUtilization"
@@ -87,15 +73,15 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
     AutoScalingGroupName = aws_autoscaling_group.this.name
   }
 
-  tags = merge(var.tags, {
-    Name = "${local.name}-cpu-high"
-  })
+  tags = {
+    Name = "${var.name_prefix}-cpu-high"
+  }
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_low" {
   count = var.scaling_mode == "cloudwatch_alarms" ? 1 : 0
 
-  alarm_name          = "${local.name}-cpu-low"
+  alarm_name          = "${var.name_prefix}-cpu-low"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 1
   metric_name         = "CPUUtilization"
@@ -111,15 +97,15 @@ resource "aws_cloudwatch_metric_alarm" "cpu_low" {
     AutoScalingGroupName = aws_autoscaling_group.this.name
   }
 
-  tags = merge(var.tags, {
-    Name = "${local.name}-cpu-low"
-  })
+  tags = {
+    Name = "${var.name_prefix}-cpu-low"
+  }
 }
 
 resource "aws_autoscaling_policy" "cpu_target_tracking" {
   count = var.scaling_mode == "target_tracking" ? 1 : 0
 
-  name                   = "${local.name}-cpu-target"
+  name                   = "${var.name_prefix}-cpu-target"
   autoscaling_group_name = aws_autoscaling_group.this.name
   policy_type            = "TargetTrackingScaling"
 

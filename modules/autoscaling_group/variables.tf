@@ -60,12 +60,6 @@ variable "target_group_arn" {
   default     = null
 }
 
-variable "tags" {
-  type        = map(string)
-  description = "Tags propagated to ASG instances"
-  default     = {}
-}
-
 variable "scaling_mode" {
   type        = string
   description = "cloudwatch_alarms (70%/30% thresholds) or target_tracking (ASG-managed; use when PutMetricAlarm is denied)"

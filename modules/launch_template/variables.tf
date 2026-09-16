@@ -28,9 +28,3 @@ variable "instance_type" {
   description = "EC2 instance type"
   default     = "t3.micro"
 }
-
-variable "tags" {
-  type        = map(string)
-  description = "Tags applied to the launch template and propagated to instances/volumes"
-  default     = {}
-}

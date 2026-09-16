@@ -1,6 +1,4 @@
 locals {
-  name                     = "${var.name_prefix}-lt"
-  iam_name                 = "${var.name_prefix}-ec2"
   permissions_boundary_arn = "arn:aws:iam::${var.account_id}:policy/eo_role_boundary"
 }
 
@@ -20,9 +18,9 @@ data "aws_ami" "amazon_linux_2" {
 }
 
 resource "aws_iam_role" "ec2" {
-  name                 = local.iam_name
+  name                 = var.name_prefix
   path                 = "/ec2/"
-  description          = "IAM role for ${local.iam_name}"
+  description          = "IAM role for ${var.name_prefix}"
   permissions_boundary = local.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
@@ -36,7 +34,9 @@ resource "aws_iam_role" "ec2" {
     }]
   })
 
-  tags = merge(var.tags, { Name = local.iam_name })
+  tags = {
+    Name = var.name_prefix
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
@@ -45,15 +45,17 @@ resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
 }
 
 resource "aws_iam_instance_profile" "ec2" {
-  name = local.iam_name
+  name = var.name_prefix
   path = "/ec2/"
   role = aws_iam_role.ec2.name
 
-  tags = merge(var.tags, { Name = local.iam_name })
+  tags = {
+    Name = var.name_prefix
+  }
 }
 
 resource "aws_launch_template" "this" {
-  name_prefix   = "${local.name}-"
+  name_prefix   = "${var.name_prefix}-"
   description   = "Launch template for ${var.name_prefix}"
   image_id      = data.aws_ami.amazon_linux_2.id
   instance_type = var.instance_type
@@ -73,17 +75,23 @@ resource "aws_launch_template" "this" {
 
   tag_specifications {
     resource_type = "instance"
-    tags          = merge(var.tags, { Name = local.name })
+    tags = {
+      Name = var.name_prefix
+    }
   }
 
   tag_specifications {
     resource_type = "volume"
-    tags          = merge(var.tags, { Name = local.name })
+    tags = {
+      Name = var.name_prefix
+    }
   }
 
   lifecycle {
     create_before_destroy = true
   }
 
-  tags = merge(var.tags, { Name = local.name })
+  tags = {
+    Name = var.name_prefix
+  }
 }
