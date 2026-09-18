@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euxo pipefail
+
+yum update -y
+amazon-linux-extras install nginx1 -y
+
+cat > /usr/share/nginx/html/index.html <<EOF
+<!DOCTYPE html>
+<html>
+<head><title>${app_name}</title></head>
+<body><h1>${app_name} — nginx is running</h1></body>
+</html>
+EOF
+
+systemctl start nginx
+systemctl enable nginx

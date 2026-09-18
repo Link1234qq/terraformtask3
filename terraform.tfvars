@@ -1,0 +1,15 @@
+aws_region           = "us-east-1"
+key_pair_name        = "openvpn"
+vpc_cidr_block       = "10.10.0.0/16"
+azs                  = ["us-east-1a", "us-east-1b"]
+public_subnets       = ["10.10.101.0/24", "10.10.102.0/24"]
+private_subnets      = ["10.10.1.0/24", "10.10.2.0/24"]
+allowed_cidr         = "85.223.209.18/32"
+app_name             = "terraformtask3"
+environment          = "dev"
+managed_by           = "Andrii"
+asg_min_size         = 1
+asg_max_size         = 4
+asg_desired_capacity = 2
+asg_instance_type    = "t3.micro"
+asg_scaling_mode     = "target_tracking"
