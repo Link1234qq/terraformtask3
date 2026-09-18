@@ -35,7 +35,7 @@ module "launch_template" {
   security_group_ids = [aws_security_group.asg.id]
   instance_type      = var.asg_instance_type
 
-  depends_on = [aws_security_group_rule.all_egress]
+  depends_on = [aws_vpc_security_group_egress_rule.all]
 }
 
 module "autoscaling_group" {
